@@ -80,8 +80,147 @@
 }
 
 </style>
+<script type="text/javascript">
+(function() {
+        let setupCompleted = false;
+        let retryTimeout = null;
+
+        RED.events.on("workspace:change", function workspaceChanged() {
+            if (setupCompleted) return;
+
+            console.log("[Flow2Src] Initializing button setup");
+            setupCompleted = true;
+            RED.events.off("workspace:change", workspaceChanged);
+
+            addToolbarButtonWhenAvailable();
+        });
+
+        function addToolbarButtonWhenAvailable() {
+            // Clear any previous timeout
+            if (retryTimeout) clearTimeout(retryTimeout);
+
+            const $toolbar = $('ul.red-ui-header-toolbar');
+            const $existingButton = $('#src-to-flow-btn');
+
+            if ($existingButton.length) {
+                console.log("[Flow2Src] Button already exists");
+                return;
+            }
+
+            if ($toolbar.length) {
+                console.log("[Flow2Src] Injecting button");
+                injectButton($toolbar);
+            } else {
+                console.log("[Flow2Src] Toolbar not found - retrying");
+                retryTimeout = setTimeout(addToolbarButtonWhenAvailable, 100);
+            }
+        }
+
+        function injectButton($toolbar) {
+            const $button = $('<li>', {
+                id: 'src-to-flow-btn',
+                class: 'red-ui-header-button'
+            }).append(
+                $('<span>', {
+                    class: 'red-ui-deploy-button-group button-group'
+                }).append(
+                    $('<a>', {
+                        class: 'red-ui-button',
+                        href: '#',
+                        text: 'Src-to-Flow'
+                    }).click(function(e) {
+                        e.preventDefault();
+                        console.log("[Flow2Src] Button clicked");
+                        automateSourceToFlowMerge();
+                    })
+                )
+            );
+
+            $toolbar.prepend($button);
+            console.log("[Flow2Src] Button successfully added");
+        }
+    })();
+
+    function setupMergeAutomation() {
+        // Track what stage of the process we're in
+        let mergeState = {
+            reviewButtonClicked: false,
+            mergeButtonClicked: false
+        };
+
+        const observer = new MutationObserver(mutations => {
+            mutations.forEach(mutation => {
+                if (mutation.type !== "childList") return;
+
+                // Step 1: Look for and click "Review changes" button
+                if (!mergeState.reviewButtonClicked) {
+                    const reviewButtonContainer = document.querySelector('.ui-dialog-buttonset');
+                    if (reviewButtonContainer) {
+                        const reviewButton = reviewButtonContainer.querySelector('button.primary');
+                        if (reviewButton && reviewButton.textContent.includes('Review changes')) {
+                            console.log('Automatically clicking "Review changes"');
+                            mergeState.reviewButtonClicked = true;
+                            reviewButton.click();
+                        }
+                    }
+                }
+
+                // Step 2: Look for and click "Merge" button after review was clicked
+                if (mergeState.reviewButtonClicked && !mergeState.mergeButtonClicked) {
+                    const mergeButton = document.querySelector('.red-ui-deploy-dialog-confirm-deploy-merge');
+                    if (mergeButton) {
+                        console.log('Automatically clicking "Merge"');
+                        mergeState.mergeButtonClicked = true;
+                        mergeButton.click();
+                    }
+                }
+            });
+        });
+
+        // Start observing the entire document body
+        observer.observe(document.body, {
+            childList: true,
+            subtree: true
+        });
+
+        // Return the observer in case we want to disconnect it later
+        return observer;
+    }
+
+    // Modify your existing fetch code to use these functions
+    function automateSourceToFlowMerge(srcFolder = 'src') {
+        // Get authentication token
+        const authToken = localStorage.getItem('auth-tokens');
+        const token = JSON.parse(authToken).access_token;
+
+        // Set up observer BEFORE triggering the endpoint
+        const observer = setupMergeAutomation();
+
+        // Trigger the src2flow endpoint
+        fetch('/custom-flow2src', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + token
+            },
+            body: JSON.stringify({
+                srcFolder: srcFolder
+            })
+        })
+        .then(response => response.json())
+        .then(data => console.log('src2flow triggered:', data))
+        .catch(error => console.error('Error:', error));
+
+        // Optionally disconnect the observer after some time
+        // setTimeout(() => {
+        //     observer.disconnect();
+        //     console.log('Observer disconnected');
+        // }, 30000); // 30 seconds should be enough for the process
+    }
+</script>
+
 <script type="text/html" data-template-name="flow2src">
-    
+
     <div id="node-props" style="width: 460px;">
                 <div class="form-row">
             <div class="col-100 reg-lbl">
@@ -119,7 +258,7 @@
             <div class="col-100">
                 <label for="node-input-incFlows">Flows</label>
                 <input type="text" id="node-input-incFlows" placeholder="">
-                
+
             </div><!--col-->
         </div><!--form-row-->
         <div class="form-row">
@@ -133,7 +272,7 @@
             <div class="col-100">
                 <label for="node-input-incSubflows">Subflows</label>
                 <input type="text" id="node-input-incSubflows" placeholder="">
-                
+
             </div><!--col-->
         </div><!--form-row-->
         <div class="form-row">
@@ -147,7 +286,7 @@
             <div class="col-100">
                 <label for="node-input-srcFolder">Output Folder</label>
                 <input type="text" id="node-input-srcFolder" placeholder="src">
-                
+
             </div><!--col-->
         </div><!--form-row-->
         <div class="form-row">
@@ -165,7 +304,7 @@
 </script>
 
 <script type="text/markdown" data-help-name="flow2src">
-    
+
 # node-red-flow2src
 Now you can easily see git diff, use CLI editors, or third-party IDEs like Visual Studio Code to leverage Co-Pilot with
 your Node-RED based projects. This node will write template and function node source code properties to a src sub-folder
@@ -230,8 +369,8 @@ Deploys".
             return this.name ? "node_label_italic" : "";
         },
         oneditprepare: function() {
-            
-            // Allow dynamic re-size after init. appearance 
+
+            // Allow dynamic re-size after init. appearance
             setTimeout(function () {
                 $('#node-props').css('width', '100%');
             }, 30);
@@ -254,19 +393,19 @@ Deploys".
             });
         },
         oneditresize: function() {
-            
-        
+
+
         },
         oneditsave: function() {
-            
+
 
         },
         oneditcancel: function() {
-            
+
 
         }
     });
-    
+
 
     function doAjax(d, id, cb) {
         $.ajax({

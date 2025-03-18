@@ -128,7 +128,7 @@ module.exports = function(RED) {
                     let srcNodes = [];
                     theNodes.forEach(function (obj) {
                         if (theIDs.indexOf(obj.z) == -1) return;
-                        
+
                         // Determine the filename extension
                         let ext = '';
                         if (obj.type == 'template') {
@@ -257,7 +257,7 @@ module.exports = function(RED) {
                     ff.forEach(function (obj) {
                         mn.forEach(function(item) {
                             if (item.id != obj.id) return;
-                            
+
                             // Update the content from the external file
                             let file = fs.readFileSync(path + '/' + item.file).toString();
                             obj[item.property] = file;
@@ -293,6 +293,107 @@ module.exports = function(RED) {
             }
         } else {
             res.sendStatus(404);
+        }
+    });
+    // Custom endpoint to trigger flow2src functionality from Editor UI
+    RED.httpAdmin.post("/custom-flow2src", RED.auth.needsPermission("nodes.write"), function(req, res) {
+        try {
+            // Find a flow2src node
+            let flow2srcNode = null;
+            RED.nodes.eachNode(function(node) {
+                if (node.type === "flow2src") {
+                    flow2srcNode = RED.nodes.getNode(node.id);
+                    return false;
+                }
+            });
+
+            if (!flow2srcNode) {
+                return res.status(404).json({error: "No flow2src node found"});
+            }
+
+            // Process the files as before
+            flow2srcNode.receive({
+                action: "src2flow",
+                srcFolder: req.body.srcFolder || "src"
+            });
+
+            // The file has been updated, now tell Node-RED to reload
+            // Get the auth token from the request
+            const authHeader = req.headers.authorization;
+
+            // Use the http module for local requests
+            const http = require('http');
+
+            // Read the updated flows file
+            const fs = require('fs');
+            let flowFile = RED.settings.userDir;
+            try {
+                if (RED.settings.get('editorTheme').projects.enabled) {
+                    let project = RED.settings.get('projects').activeProject;
+                    let package_json = flowFile + '/projects/' + project + '/package.json';
+                    let pk = JSON.parse(fs.readFileSync(package_json).toString());
+                    flowFile += '/projects/' + project + '/' + pk['node-red']['settings']['flowFile'];
+                } else {
+                    flowFile += '/' + RED.settings.flowFile;
+                }
+            } catch(e) {
+                return res.status(500).json({error: "Failed to determine flow file: " + e.toString()});
+            }
+
+            // Read the flows from the file
+            let flowData;
+            try {
+                flowData = fs.readFileSync(flowFile).toString();
+            } catch(e) {
+                return res.status(500).json({error: "Failed to read flow file: " + e.toString()});
+            }
+
+            // Prepare the request options
+            const options = {
+                hostname: 'localhost',
+                port: RED.settings.uiPort || 1880,
+                path: '/flows',
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Node-RED-API-Version': 'v2',
+                    'Node-RED-Deployment-Type': 'reload',
+                    'Authorization': authHeader
+                }
+            };
+
+            // Make the request
+            const reloadReq = http.request(options, (reloadRes) => {
+                let data = '';
+                reloadRes.on('data', (chunk) => {
+                    data += chunk;
+                });
+
+                reloadRes.on('end', () => {
+                    if (reloadRes.statusCode >= 200 && reloadRes.statusCode < 300) {
+                        res.status(200).json({
+                            success: true,
+                            message: "src2flow operation completed and flows reloaded"
+                        });
+                    } else {
+                        res.status(reloadRes.statusCode).json({
+                            error: "Failed to reload flows: " + data
+                        });
+                    }
+                });
+            });
+
+            reloadReq.on('error', (e) => {
+                res.status(500).json({error: "Error making reload request: " + e.toString()});
+            });
+
+            // Write the flow data to the request
+            reloadReq.write(flowData);
+            reloadReq.end();
+
+        } catch (err) {
+            console.error("Error in custom-flow2src endpoint:", err);
+            res.status(500).json({error: err.toString()});
         }
     });
     RED.nodes.registerType('flow2src', flow2src);
