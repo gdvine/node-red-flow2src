@@ -156,7 +156,6 @@
                             reviewButton.click();
                             reviewObserver.disconnect();
                             reviewObserver.observe(document.body, observerConfig);
-                            mergeObserver.observe(document.body, observerConfig);
                             break;
                         }
                     }
@@ -180,7 +179,6 @@
                             mergeButton.dispatchEvent(event);
                         }, 150);
                         mergeObserver.disconnect();
-                        reviewObserver.observe(document.body, observerConfig);
                         mergeObserver.observe(document.body, observerConfig);
                         break;
                     }
