@@ -121,16 +121,19 @@
                 $('<span>', {
                     class: 'red-ui-deploy-button-group button-group'
                 }).append(
-                    $('<a>', {
-                        class: 'red-ui-button',
-                        href: '#',
-                        text: 'Src-to-Flow'
-                    }).click(function(e) {
-                        e.preventDefault();
-                        // console.log("[Flow2Src] Button clicked");
-                        automateSourceToFlowMerge();
-                    })
-                )
+                    $('<i>', {
+                        class: 'fa fa-upload'
+                    }).append(
+                        $('<a>', {
+                            class: 'red-ui-button',
+                            href: '#',
+                            text: 'Src-to-Flow'
+                        }).click(function(e) {
+                            e.preventDefault();
+                            // console.log("[Flow2Src] Button clicked");
+                            automateSourceToFlowMerge();
+                        })
+                    )
             );
 
             $toolbar.prepend($button);
