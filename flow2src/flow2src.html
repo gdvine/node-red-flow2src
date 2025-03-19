@@ -87,8 +87,6 @@
 
         RED.events.on("workspace:change", function workspaceChanged() {
             if (setupCompleted) return;
-
-            console.log("[Flow2Src] Initializing button setup");
             setupCompleted = true;
             RED.events.off("workspace:change", workspaceChanged);
 
@@ -108,7 +106,6 @@
             }
 
             if ($toolbar.length) {
-                console.log("[Flow2Src] Injecting button");
                 injectButton($toolbar);
             } else {
                 console.log("[Flow2Src] Toolbar not found - retrying");
@@ -130,61 +127,71 @@
                         text: 'Src-to-Flow'
                     }).click(function(e) {
                         e.preventDefault();
-                        console.log("[Flow2Src] Button clicked");
+                        // console.log("[Flow2Src] Button clicked");
                         automateSourceToFlowMerge();
                     })
                 )
             );
 
             $toolbar.prepend($button);
-            console.log("[Flow2Src] Button successfully added");
         }
     })();
 
     function setupMergeAutomation() {
-        // Track what stage of the process we're in
+        // Track state to ensure single execution
         let mergeState = {
             reviewButtonClicked: false,
             mergeButtonClicked: false
         };
 
-        const observer = new MutationObserver(mutations => {
-            mutations.forEach(mutation => {
-                if (mutation.type !== "childList") return;
-
-                // Step 1: Look for and click "Review changes" button
+        // Observer for the "Review changes" button
+        const reviewObserver = new MutationObserver(mutations => {
+            for (const mutation of mutations) {
                 if (!mergeState.reviewButtonClicked) {
                     const reviewButtonContainer = document.querySelector('.ui-dialog-buttonset');
                     if (reviewButtonContainer) {
                         const reviewButton = reviewButtonContainer.querySelector('button.primary');
                         if (reviewButton && reviewButton.textContent.includes('Review changes')) {
-                            console.log('Automatically clicking "Review changes"');
                             mergeState.reviewButtonClicked = true;
                             reviewButton.click();
+                            reviewObserver.disconnect();
+                            reviewObserver.observe(document.body, observerConfig);
+                            mergeObserver.observe(document.body, observerConfig);
+                            break;
                         }
                     }
                 }
+            }
+        });
 
-                // Step 2: Look for and click "Merge" button after review was clicked
+        // Observer for the "Merge" button
+        const mergeObserver = new MutationObserver(mutations => {
+            for (const mutation of mutations) {
                 if (mergeState.reviewButtonClicked && !mergeState.mergeButtonClicked) {
-                    const mergeButton = document.querySelector('.red-ui-deploy-dialog-confirm-deploy-merge');
+                    const mergeButton = document.querySelector('#red-ui-deploy-dialog-confirm-deploy-merge');
                     if (mergeButton) {
-                        console.log('Automatically clicking "Merge"');
                         mergeState.mergeButtonClicked = true;
-                        mergeButton.click();
+                        setTimeout(() => {
+                            const event = new MouseEvent('click', {
+                                view: window,
+                                bubbles: true,
+                                cancelable: true
+                            });
+                            mergeButton.dispatchEvent(event);
+                        }, 150);
+                        mergeObserver.disconnect();
+                        reviewObserver.observe(document.body, observerConfig);
+                        mergeObserver.observe(document.body, observerConfig);
+                        break;
                     }
                 }
-            });
+            }
         });
 
-        // Start observing the entire document body
-        observer.observe(document.body, {
-            childList: true,
-            subtree: true
-        });
-
-        // Return the observer in case we want to disconnect it later
-        return observer;
+        // Start observing the whole document
+        const observerConfig = { childList: true, subtree: true };
+        reviewObserver.observe(document.body, observerConfig);
+        mergeObserver.observe(document.body, observerConfig);
     }
 
     // Modify your existing fetch code to use these functions
@@ -208,14 +215,8 @@
             })
         })
         .then(response => response.json())
-        .then(data => console.log('src2flow triggered:', data))
+        // .then(data => console.log('src2flow triggered:', data))
         .catch(error => console.error('Error:', error));
-
-        // Optionally disconnect the observer after some time
-        // setTimeout(() => {
-        //     observer.disconnect();
-        //     console.log('Observer disconnected');
-        // }, 30000); // 30 seconds should be enough for the process
     }
 </script>
 
